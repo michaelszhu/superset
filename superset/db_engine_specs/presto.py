@@ -95,6 +95,11 @@ CONNECTION_UNKNOWN_DATABASE_ERROR = re.compile(
 
 logger = logging.getLogger(__name__)
 
+# Partition column names are sourced from database metadata and must be validated
+# before interpolation into SQLAlchemy Column() expressions to prevent identifier
+# injection (see SECURITY.md, "SQL-construction paths").
+_VALID_PARTITION_COL_RE: re.Pattern[str] = re.compile(r"^\w+$")
+
 
 def get_children(column: ResultSetColumnType) -> list[ResultSetColumnType]:
     """
@@ -551,6 +556,10 @@ class PrestoBaseEngineSpec(BaseEngineSpec, metaclass=ABCMeta):
         }
 
         for col_name, value in zip(col_names, values, strict=False):
+            if not _VALID_PARTITION_COL_RE.match(col_name):
+                logger.warning("Rejected invalid partition column name: %s", col_name)
+                return None
+
             col_type = column_type_by_name.get(col_name)
 
             if isinstance(col_type, str):

@@ -183,3 +183,79 @@ def test_partition_query_escapes_identifiers() -> None:
         database=None,  # type: ignore
     )
     assert result == "SHOW PARTITIONS `no_schema_tbl`"
+
+
+@pytest.mark.parametrize(
+    "malicious_col_name",
+    [
+        "col; DROP TABLE users --",
+        'col" OR 1=1 --',
+        "col`; DROP TABLE users --",
+        "col' OR '1'='1",
+        "col\nDROP TABLE users",
+        "col OR 1=1",
+    ],
+)
+def test_where_latest_partition_rejects_invalid_column_names(
+    mocker: MockerFixture,
+    malicious_col_name: str,
+) -> None:
+    """Verify that HiveEngineSpec.where_latest_partition rejects malicious col names."""
+    from sqlalchemy import select
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    mocker.patch.object(
+        HiveEngineSpec,
+        "latest_partition",
+        return_value=([malicious_col_name], ["2023-05-01"]),
+    )
+
+    result = HiveEngineSpec.where_latest_partition(
+        database=mocker.MagicMock(),
+        table=Table("test_table", "test_schema"),
+        query=select(),
+        columns=[
+            {
+                "column_name": malicious_col_name,
+                "name": malicious_col_name,
+                "type": "VARCHAR",
+                "is_dttm": False,
+            }
+        ],
+    )
+    assert result is None
+
+
+def test_where_latest_partition_accepts_valid_column_names(
+    mocker: MockerFixture,
+) -> None:
+    """Verify valid column names pass through where_latest_partition."""
+    from sqlalchemy import select
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    mocker.patch.object(
+        HiveEngineSpec,
+        "latest_partition",
+        return_value=(["ds"], ["2023-05-01"]),
+    )
+
+    result = HiveEngineSpec.where_latest_partition(
+        database=mocker.MagicMock(),
+        table=Table("test_table", "test_schema"),
+        query=select(),
+        columns=[
+            {
+                "column_name": "ds",
+                "name": "ds",
+                "type": "VARCHAR",
+                "is_dttm": False,
+            }
+        ],
+    )
+    assert result is not None
+    compiled = str(result.compile(compile_kwargs={"literal_binds": True}))
+    assert "ds" in compiled

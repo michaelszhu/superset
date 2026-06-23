@@ -40,7 +40,7 @@ from superset import db
 from superset.common.db_query_status import QueryStatus
 from superset.constants import TimeGrain
 from superset.db_engine_specs.base import BaseEngineSpec, DatabaseCategory
-from superset.db_engine_specs.presto import PrestoEngineSpec
+from superset.db_engine_specs.presto import _VALID_PARTITION_COL_RE, PrestoEngineSpec
 from superset.exceptions import SupersetException
 from superset.extensions import cache_manager
 from superset.models.sql_lab import Query
@@ -468,6 +468,12 @@ class HiveEngineSpec(PrestoEngineSpec):
             return None
         if values is not None and columns is not None:
             for col_name, value in zip(col_names, values, strict=False):
+                if not _VALID_PARTITION_COL_RE.match(col_name):
+                    logger.warning(
+                        "Rejected invalid partition column name: %s", col_name
+                    )
+                    return None
+
                 for clm in columns:
                     if clm.get("name") == col_name:
                         query = query.where(Column(col_name) == value)

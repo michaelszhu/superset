@@ -156,6 +156,75 @@ def test_where_latest_partition(
     )
 
 
+@mock.patch("superset.db_engine_specs.presto.PrestoEngineSpec.latest_partition")
+@pytest.mark.parametrize(
+    "malicious_col_name",
+    [
+        "col; DROP TABLE users --",
+        'col" OR 1=1 --',
+        "col`; DROP TABLE users --",
+        "col' OR '1'='1",
+        "col\nDROP TABLE users",
+        "col OR 1=1",
+    ],
+)
+def test_where_latest_partition_rejects_invalid_column_names(
+    mock_latest_partition: mock.MagicMock,
+    malicious_col_name: str,
+) -> None:
+    """Verify that where_latest_partition rejects column names with non-word chars."""
+    from superset.db_engine_specs.presto import PrestoEngineSpec
+
+    mock_latest_partition.return_value = ([malicious_col_name], ["2023-05-01"])
+
+    result = PrestoEngineSpec.where_latest_partition(
+        database=mock.MagicMock(),
+        table=Table("table"),
+        query=sql.select(text("* FROM table")),
+        columns=[
+            {
+                "column_name": malicious_col_name,
+                "name": malicious_col_name,
+                "type": "VARCHAR",
+                "is_dttm": False,
+            }
+        ],
+    )
+    assert result is None
+
+
+@mock.patch("superset.db_engine_specs.presto.PrestoEngineSpec.latest_partition")
+def test_where_latest_partition_accepts_valid_column_names(
+    mock_latest_partition: mock.MagicMock,
+) -> None:
+    """Verify that valid column names (word chars only) are accepted."""
+    from superset.db_engine_specs.presto import PrestoEngineSpec
+
+    mock_latest_partition.return_value = (["ds_partition_2"], ["2023-05-01"])
+
+    result = PrestoEngineSpec.where_latest_partition(
+        database=mock.MagicMock(),
+        table=Table("table"),
+        query=sql.select(text("* FROM table")),
+        columns=[
+            {
+                "column_name": "ds_partition_2",
+                "name": "ds_partition_2",
+                "type": "VARCHAR",
+                "is_dttm": False,
+            }
+        ],
+    )
+    assert result is not None
+    compiled = str(
+        result.compile(
+            dialect=PrestoDialect(),
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "ds_partition_2" in compiled
+
+
 def test_adjust_engine_params_fully_qualified() -> None:
     """
     Test the ``adjust_engine_params`` method when the URL has catalog and schema.
