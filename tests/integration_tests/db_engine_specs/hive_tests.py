@@ -353,7 +353,7 @@ def test_where_latest_partition(mock_method):
             columns,
         )
     query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
-    assert "SELECT  \nWHERE ds = '01-01-19' AND hour = 1" == query_result
+    assert 'SELECT  \nWHERE "ds" = \'01-01-19\' AND "hour" = 1' == query_result
 
 
 @mock.patch("superset.db_engine_specs.presto.PrestoEngineSpec.latest_partition")
@@ -383,6 +383,30 @@ def test_where_latest_partition_no_columns_no_values(mock_method):
             select(),
         )
     assert result is None
+
+
+@mock.patch("superset.db_engine_specs.hive.HiveEngineSpec._latest_partition_from_df")
+def test_where_latest_partition_quotes_column_names(mock_method):
+    """Column names from partition metadata are quoted to prevent injection."""
+    mock_method.return_value = ("safe_val", 1)
+    database = mock.Mock()
+    database.get_indexes = mock.Mock(
+        return_value=[{"column_names": ["ds; DROP TABLE t--", "hour"]}]
+    )
+    database.get_extra = mock.Mock(return_value={})
+    database.get_df = mock.Mock()
+    columns = [{"name": "ds; DROP TABLE t--"}, {"name": "hour"}]
+    with app.app_context():
+        result = HiveEngineSpec.where_latest_partition(
+            database,
+            Table("test_table", "test_schema"),
+            select(),
+            columns,
+        )
+    query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
+    # The malicious column name must be wrapped in quotes, not bare in the SQL
+    assert '"ds; DROP TABLE t--"' in query_result
+    assert '"hour"' in query_result
 
 
 def test__latest_partition_from_df():
