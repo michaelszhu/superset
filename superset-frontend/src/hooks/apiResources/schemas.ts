@@ -16,16 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useCallback, useEffect } from 'react';
 import { ClientErrorObject } from '@superset-ui/core';
-import useEffectEvent from 'src/hooks/useEffectEvent';
 import { api, JsonResponse } from './queryApi';
+import { DbResourceOption, useDbResourceQuery } from './useDbResourceQuery';
 
-export type SchemaOption = {
-  value: string;
-  label: string;
-  title: string;
-};
+export type SchemaOption = DbResourceOption;
 
 export type FetchSchemasQueryParams = {
   dbId?: string | number;
@@ -82,43 +77,17 @@ export function useSchemas(options: Params) {
     },
   );
 
-  useEffect(() => {
-    if (result.isError) {
-      onError?.(result.error as ClientErrorObject);
-    }
-  }, [result.isError, result.error, onError]);
-
-  const fetchData = useEffectEvent(
-    (
-      dbId: FetchSchemasQueryParams['dbId'],
-      catalog: FetchSchemasQueryParams['catalog'],
-      forceRefresh = false,
-    ) => {
-      if (dbId && (!result.currentData || forceRefresh)) {
-        trigger({ dbId, catalog, forceRefresh }).then(
-          ({ isSuccess, isError, data }) => {
-            if (isSuccess) {
-              onSuccess?.(data || EMPTY_SCHEMAS, forceRefresh);
-            }
-            if (isError) {
-              onError?.(result.error as ClientErrorObject);
-            }
-          },
-        );
-      }
-    },
+  return useDbResourceQuery(
+    trigger as (args: Record<string, unknown>) => Promise<{
+      isSuccess: boolean;
+      isError: boolean;
+      data?: SchemaOption[];
+    }>,
+    result,
+    EMPTY_SCHEMAS,
+    { dbId, catalog },
+    onSuccess,
+    onError,
+    !dbId,
   );
-
-  useEffect(() => {
-    fetchData(dbId, catalog, false);
-  }, [dbId, catalog, fetchData]);
-
-  const refetch = useCallback(() => {
-    fetchData(dbId, catalog, true);
-  }, [dbId, catalog, fetchData]);
-
-  return {
-    ...result,
-    refetch,
-  };
 }

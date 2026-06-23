@@ -15,12 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any
 from zipfile import is_zipfile, ZipFile
 
-from flask import g, request, Response, send_file
+from flask import g, request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_babel import ngettext
@@ -54,13 +52,13 @@ from superset.queries.saved_queries.schemas import (
     openapi_spec_methods_override,
 )
 from superset.utils import json
-from superset.utils.core import sanitize_cookie_token
 from superset.views.base_api import (
     BaseSupersetModelRestApi,
     RelatedFieldFilter,
     requires_form_data,
     statsd_metrics,
 )
+from superset.views.export import export_as_zip
 from superset.views.filters import BaseFilterRelatedUsers, FilterRelatedOwners
 
 logger = logging.getLogger(__name__)
@@ -284,31 +282,12 @@ class SavedQueryRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"saved_query_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportSavedQueriesCommand(
-                    requested_ids
-                ).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except SavedQueryNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
-        )
-        if token := sanitize_cookie_token(request.args.get("token")):
-            response.set_cookie(token, "done", max_age=600)
-        return response
+        try:
+            return export_as_zip(
+                "saved_query", ExportSavedQueriesCommand(requested_ids).run()
+            )
+        except SavedQueryNotFoundError:
+            return self.response_404()
 
     @expose("/import/", methods=("POST",))
     @protect()

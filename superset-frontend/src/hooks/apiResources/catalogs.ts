@@ -16,16 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-import { useCallback, useEffect } from 'react';
 import { ClientErrorObject } from '@superset-ui/core';
-import useEffectEvent from 'src/hooks/useEffectEvent';
 import { api, JsonResponse } from './queryApi';
+import { DbResourceOption, useDbResourceQuery } from './useDbResourceQuery';
 
-export type CatalogOption = {
-  value: string;
-  label: string;
-  title: string;
-};
+export type CatalogOption = DbResourceOption;
 
 export type FetchCatalogsQueryParams = {
   dbId?: string | number;
@@ -78,37 +73,17 @@ export function useCatalogs(options: Params) {
     },
   );
 
-  useEffect(() => {
-    if (result.isError) {
-      onError?.(result.error as ClientErrorObject);
-    }
-  }, [result.isError, result.error, onError]);
-
-  const fetchData = useEffectEvent(
-    (dbId: FetchCatalogsQueryParams['dbId'], forceRefresh = false) => {
-      if (dbId && (!result.currentData || forceRefresh)) {
-        trigger({ dbId, forceRefresh }).then(({ isSuccess, isError, data }) => {
-          if (isSuccess) {
-            onSuccess?.(data || EMPTY_CATALOGS, forceRefresh);
-          }
-          if (isError) {
-            onError?.(result.error as ClientErrorObject);
-          }
-        });
-      }
-    },
+  return useDbResourceQuery(
+    trigger as (args: Record<string, unknown>) => Promise<{
+      isSuccess: boolean;
+      isError: boolean;
+      data?: CatalogOption[];
+    }>,
+    result,
+    EMPTY_CATALOGS,
+    { dbId },
+    onSuccess,
+    onError,
+    !dbId,
   );
-
-  const refetch = useCallback(() => {
-    fetchData(dbId, true);
-  }, [dbId, fetchData]);
-
-  useEffect(() => {
-    fetchData(dbId, false);
-  }, [dbId, fetchData]);
-
-  return {
-    ...result,
-    refetch,
-  };
 }

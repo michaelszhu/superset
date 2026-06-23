@@ -15,12 +15,10 @@
 # specific language governing permissions and limitations
 # under the License.
 import logging
-from datetime import datetime
-from io import BytesIO
 from typing import Any
 from zipfile import ZipFile
 
-from flask import current_app as app, request, Response, send_file
+from flask import current_app as app, request, Response
 from flask_appbuilder.api import expose, protect, rison as parse_rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
 from flask_babel import ngettext
@@ -55,13 +53,13 @@ from superset.themes.schemas import (
     ThemePostSchema,
     ThemePutSchema,
 )
-from superset.utils.core import sanitize_cookie_token
 from superset.utils.decorators import transaction
 from superset.views.base_api import (
     BaseSupersetModelRestApi,
     RelatedFieldFilter,
     statsd_metrics,
 )
+from superset.views.export import export_as_zip
 from superset.views.filters import BaseFilterRelatedUsers, FilterRelatedOwners
 
 logger = logging.getLogger(__name__)
@@ -469,30 +467,10 @@ class ThemeRestApi(BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"theme_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportThemesCommand(requested_ids).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except ThemeNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
-        )
-        if token := sanitize_cookie_token(request.args.get("token")):
-            response.set_cookie(token, "done", max_age=600)
-        return response
+        try:
+            return export_as_zip("theme", ExportThemesCommand(requested_ids).run())
+        except ThemeNotFoundError:
+            return self.response_404()
 
     @expose("/import/", methods=("POST",))
     @protect()
@@ -560,9 +538,9 @@ class ThemeRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self,
-        *args,
-        **kwargs: f"{self.__class__.__name__}.set_system_default",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.set_system_default"
+        ),
         log_to_statsd=False,
     )
     def set_system_default(self, pk: int) -> Response:
@@ -627,9 +605,9 @@ class ThemeRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self,
-        *args,
-        **kwargs: f"{self.__class__.__name__}.set_system_dark",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.set_system_dark"
+        ),
         log_to_statsd=False,
     )
     def set_system_dark(self, pk: int) -> Response:
@@ -694,9 +672,9 @@ class ThemeRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self,
-        *args,
-        **kwargs: f"{self.__class__.__name__}.unset_system_default",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.unset_system_default"
+        ),
         log_to_statsd=False,
     )
     def unset_system_default(self) -> Response:
@@ -744,9 +722,9 @@ class ThemeRestApi(BaseSupersetModelRestApi):
     @safe
     @statsd_metrics
     @event_logger.log_this_with_context(
-        action=lambda self,
-        *args,
-        **kwargs: f"{self.__class__.__name__}.unset_system_dark",
+        action=lambda self, *args, **kwargs: (
+            f"{self.__class__.__name__}.unset_system_dark"
+        ),
         log_to_statsd=False,
     )
     def unset_system_dark(self) -> Response:

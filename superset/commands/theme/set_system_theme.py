@@ -19,6 +19,7 @@ from functools import partial
 from typing import Optional
 
 from sqlalchemy import update
+from sqlalchemy.orm import InstrumentedAttribute
 
 from superset.commands.base import BaseCommand
 from superset.commands.theme.exceptions import ThemeNotFoundError
@@ -30,7 +31,12 @@ from superset.utils.decorators import on_error, transaction
 logger = logging.getLogger(__name__)
 
 
-class SetSystemDefaultThemeCommand(BaseCommand):
+class _SetSystemThemeCommand(BaseCommand):
+    """Set a theme as the active theme for a given system role (default or dark)."""
+
+    _column: InstrumentedAttribute
+    _role_label: str
+
     def __init__(self, theme_id: int):
         self._theme_id = theme_id
         self._theme: Optional[Theme] = None
@@ -40,18 +46,16 @@ class SetSystemDefaultThemeCommand(BaseCommand):
         self.validate()
         assert self._theme
 
-        # Clear all existing system defaults in a single query
         db.session.execute(
             update(Theme)
-            .where(Theme.is_system_default.is_(True))
-            .values(is_system_default=False)
+            .where(self._column.is_(True))
+            .values({self._column.key: False})
         )
 
-        # Set the new system default
-        self._theme.is_system_default = True
+        setattr(self._theme, self._column.key, True)
         db.session.add(self._theme)
 
-        logger.info("Set theme %s as system default", self._theme_id)
+        logger.info("Set theme %s as system %s", self._theme_id, self._role_label)
 
         return self._theme
 
@@ -61,66 +65,41 @@ class SetSystemDefaultThemeCommand(BaseCommand):
             raise ThemeNotFoundError()
 
 
-class SetSystemDarkThemeCommand(BaseCommand):
-    def __init__(self, theme_id: int):
-        self._theme_id = theme_id
-        self._theme: Optional[Theme] = None
-
-    @transaction(on_error=partial(on_error, reraise=Exception))
-    def run(self) -> Theme:
-        self.validate()
-        assert self._theme
-
-        # Clear all existing system dark themes in a single query
-        db.session.execute(
-            update(Theme)
-            .where(Theme.is_system_dark.is_(True))
-            .values(is_system_dark=False)
-        )
-
-        # Set the new system dark theme
-        self._theme.is_system_dark = True
-        db.session.add(self._theme)
-
-        logger.info("Set theme %s as system dark", self._theme_id)
-
-        return self._theme
-
-    def validate(self) -> None:
-        self._theme = ThemeDAO.find_by_id(self._theme_id)
-        if not self._theme:
-            raise ThemeNotFoundError()
+class SetSystemDefaultThemeCommand(_SetSystemThemeCommand):
+    _column = Theme.is_system_default
+    _role_label = "default"
 
 
-class ClearSystemDefaultThemeCommand(BaseCommand):
+class SetSystemDarkThemeCommand(_SetSystemThemeCommand):
+    _column = Theme.is_system_dark
+    _role_label = "dark"
+
+
+class _ClearSystemThemeCommand(BaseCommand):
+    """Clear whichever theme is marked as the active theme for a system role."""
+
+    _column: InstrumentedAttribute
+    _role_label: str
+
     @transaction(on_error=partial(on_error, reraise=Exception))
     def run(self) -> None:
-        # Clear all system default themes
         db.session.execute(
             update(Theme)
-            .where(Theme.is_system_default.is_(True))
-            .values(is_system_default=False)
+            .where(self._column.is_(True))
+            .values({self._column.key: False})
         )
 
-        logger.info("Cleared system default theme")
+        logger.info("Cleared system %s theme", self._role_label)
 
     def validate(self) -> None:
-        # No validation needed for clearing
         pass
 
 
-class ClearSystemDarkThemeCommand(BaseCommand):
-    @transaction(on_error=partial(on_error, reraise=Exception))
-    def run(self) -> None:
-        # Clear all system dark themes
-        db.session.execute(
-            update(Theme)
-            .where(Theme.is_system_dark.is_(True))
-            .values(is_system_dark=False)
-        )
+class ClearSystemDefaultThemeCommand(_ClearSystemThemeCommand):
+    _column = Theme.is_system_default
+    _role_label = "default"
 
-        logger.info("Cleared system dark theme")
 
-    def validate(self) -> None:
-        # No validation needed for clearing
-        pass
+class ClearSystemDarkThemeCommand(_ClearSystemThemeCommand):
+    _column = Theme.is_system_dark
+    _role_label = "dark"

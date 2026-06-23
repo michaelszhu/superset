@@ -17,7 +17,6 @@
 # pylint: disable=too-many-lines
 import functools
 import logging
-from datetime import datetime
 from io import BytesIO
 from typing import Any, Callable, cast
 from zipfile import is_zipfile, ZipFile
@@ -149,6 +148,7 @@ from superset.views.base_api import (
 )
 from superset.views.custom_tags_api_mixin import CustomTagsOptimizationMixin
 from superset.views.error_handling import handle_api_exception
+from superset.views.export import export_as_zip
 from superset.views.filters import (
     BaseFilterRelatedRoles,
     BaseFilterRelatedUsers,
@@ -1257,32 +1257,12 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
               $ref: '#/components/responses/500'
         """
         requested_ids = kwargs["rison"]
-
-        timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-        root = f"dashboard_export_{timestamp}"
-        filename = f"{root}.zip"
-
-        buf = BytesIO()
-        with ZipFile(buf, "w") as bundle:
-            try:
-                for file_name, file_content in ExportDashboardsCommand(
-                    requested_ids
-                ).run():
-                    with bundle.open(f"{root}/{file_name}", "w") as fp:
-                        fp.write(file_content().encode())
-            except DashboardNotFoundError:
-                return self.response_404()
-        buf.seek(0)
-
-        response = send_file(
-            buf,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename,
-        )
-        if token := sanitize_cookie_token(request.args.get("token")):
-            response.set_cookie(token, "done", max_age=600)
-        return response
+        try:
+            return export_as_zip(
+                "dashboard", ExportDashboardsCommand(requested_ids).run()
+            )
+        except DashboardNotFoundError:
+            return self.response_404()
 
     @expose("/<pk>/export_as_example/", methods=("GET",))
     @protect()
