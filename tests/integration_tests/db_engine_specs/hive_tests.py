@@ -353,7 +353,29 @@ def test_where_latest_partition(mock_method):
             columns,
         )
     query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
-    assert "SELECT  \nWHERE ds = '01-01-19' AND hour = 1" == query_result
+    assert 'SELECT  \nWHERE "ds" = \'01-01-19\' AND "hour" = 1' == query_result
+
+
+@mock.patch("superset.db_engine_specs.hive.HiveEngineSpec._latest_partition_from_df")
+def test_where_latest_partition_quotes_unsafe_column_names(mock_method):
+    mock_method.return_value = ("val",)
+    database = mock.Mock()
+    database.get_indexes = mock.Mock(
+        return_value=[{"column_names": ['col"; DROP TABLE t--']}]
+    )
+    database.get_extra = mock.Mock(return_value={})
+    database.get_df = mock.Mock()
+    columns = [{"name": 'col"; DROP TABLE t--'}]
+    with app.app_context():
+        result = HiveEngineSpec.where_latest_partition(
+            database,
+            Table("test_table", "test_schema"),
+            select(),
+            columns,
+        )
+    query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
+    # The malicious column name must be inside quotes, preventing SQL injection
+    assert '"col""; DROP TABLE t--"' in query_result
 
 
 @mock.patch("superset.db_engine_specs.presto.PrestoEngineSpec.latest_partition")

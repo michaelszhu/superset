@@ -34,6 +34,7 @@ from sqlalchemy import Column, text, types
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.engine.url import URL
+from sqlalchemy.sql import quoted_name
 from sqlalchemy.sql.expression import ColumnClause, Select
 
 from superset import db
@@ -470,7 +471,9 @@ class HiveEngineSpec(PrestoEngineSpec):
             for col_name, value in zip(col_names, values, strict=False):
                 for clm in columns:
                     if clm.get("name") == col_name:
-                        query = query.where(Column(col_name) == value)
+                        query = query.where(
+                            Column(quoted_name(col_name, quote=True)) == value
+                        )
 
             return query
         return None

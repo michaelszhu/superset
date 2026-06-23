@@ -82,8 +82,8 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
     def verify_presto_column(self, column, expected_results):
         inspector = mock.Mock()
         preparer = inspector.engine.dialect.identifier_preparer
-        preparer.quote_identifier = preparer.quote = preparer.quote_schema = (
-            lambda x: f'"{x}"'
+        preparer.quote_identifier = preparer.quote = preparer.quote_schema = lambda x: (
+            f'"{x}"'
         )
         row = mock.Mock()
         row.Column, row.Type, row.Null = column
@@ -608,7 +608,7 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
             columns,
         )
         query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
-        assert "SELECT  \nWHERE ds = '01-01-19' AND hour = 1" == query_result
+        assert 'SELECT  \nWHERE "ds" = \'01-01-19\' AND "hour" = 1' == query_result
 
     def test_query_cost_formatter(self):
         raw_cost = [
@@ -828,8 +828,8 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
     def test_show_columns(self):
         inspector = mock.MagicMock()
         preparer = inspector.engine.dialect.identifier_preparer
-        preparer.quote_identifier = preparer.quote = preparer.quote_schema = (
-            lambda x: f'"{x}"'
+        preparer.quote_identifier = preparer.quote = preparer.quote_schema = lambda x: (
+            f'"{x}"'
         )
         inspector.bind.execute.return_value.fetchall = mock.MagicMock(
             return_value=["a", "b"]
@@ -845,8 +845,8 @@ class TestPrestoDbEngineSpec(SupersetTestCase):
     def test_show_columns_with_schema(self):
         inspector = mock.MagicMock()
         preparer = inspector.engine.dialect.identifier_preparer
-        preparer.quote_identifier = preparer.quote = preparer.quote_schema = (
-            lambda x: f'"{x}"'
+        preparer.quote_identifier = preparer.quote = preparer.quote_schema = lambda x: (
+            f'"{x}"'
         )
         inspector.bind.execute.return_value.fetchall = mock.MagicMock(
             return_value=["a", "b"]
