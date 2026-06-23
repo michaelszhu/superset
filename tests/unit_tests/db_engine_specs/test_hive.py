@@ -155,6 +155,55 @@ def test_df_to_sql_escapes_like_wildcards(mocker: MockerFixture) -> None:
     assert "ESCAPE" in sql
 
 
+def test_df_to_sql_escapes_column_names(mocker: MockerFixture) -> None:
+    """
+    Test that ``df_to_sql`` escapes backticks in DataFrame column names within the
+    CREATE TABLE schema definition to prevent SQL injection.
+    """
+    import pandas as pd
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    mocker.patch(
+        "superset.db_engine_specs.hive.upload_to_s3",
+        return_value="s3a://bucket/prefix/table",
+    )
+
+    mock_app = mocker.patch("superset.db_engine_specs.hive.app")
+    mock_app.config = {
+        "UPLOAD_FOLDER": "/tmp",
+        "CSV_TO_HIVE_UPLOAD_DIRECTORY_FUNC": lambda *args: "prefix",
+    }
+
+    mocker.patch("superset.db_engine_specs.hive.g")
+
+    mock_engine = mocker.MagicMock()
+    mock_engine.__enter__ = mocker.MagicMock(return_value=mock_engine)
+    mock_engine.__exit__ = mocker.MagicMock(return_value=False)
+    mocker.patch.object(HiveEngineSpec, "get_engine", return_value=mock_engine)
+
+    mocker.patch("superset.db_engine_specs.hive.pq")
+
+    database = mocker.MagicMock()
+    df = pd.DataFrame({"normal_col": [1], "evil`col` DROP TABLE x--": [2]})
+
+    HiveEngineSpec.df_to_sql(
+        database=database,
+        table=Table("test_table", "test_schema"),
+        df=df,
+        to_sql_kwargs={"if_exists": "replace"},
+    )
+
+    # The engine.execute should have been called twice: DROP TABLE + CREATE TABLE
+    calls = mock_engine.execute.call_args_list
+    create_call = calls[1]
+    sql_text = str(create_call[0][0].text)
+    # Backticks in column name must be doubled to prevent injection
+    assert "evil``col`` DROP TABLE x--" in sql_text
+    assert "`normal_col`" in sql_text
+
+
 def test_partition_query_escapes_identifiers() -> None:
     """
     Test that ``_partition_query`` correctly backtick-quotes table and schema names
