@@ -247,7 +247,8 @@ class HiveEngineSpec(PrestoEngineSpec):
             return hive_type_by_dtype.get(dtype, "STRING")
 
         schema_definition = ", ".join(
-            f"`{name}` {_get_hive_type(dtype)}" for name, dtype in df.dtypes.items()
+            f"`{name.replace('`', '``')}` {_get_hive_type(dtype)}"
+            for name, dtype in df.dtypes.items()
         )
 
         with tempfile.NamedTemporaryFile(
