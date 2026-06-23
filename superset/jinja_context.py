@@ -211,6 +211,10 @@ class ExtraCache:
                 self.cache_key_wrapper(json.dumps(user_roles))
             return user_roles
         except Exception:  # pylint: disable=broad-except
+            logger.warning(
+                "Failed to retrieve user roles for Jinja context",
+                exc_info=True,
+            )
             return None
 
     def current_user_rls_rules(self) -> list[str] | None:

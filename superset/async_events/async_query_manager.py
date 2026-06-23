@@ -75,7 +75,12 @@ def increment_id(entry_id: str) -> str:
     try:
         prefix, last = entry_id[:-1], int(entry_id[-1])
         return prefix + str(last + 1)
-    except Exception:  # pylint: disable=broad-except
+    except (ValueError, IndexError):
+        logger.warning(
+            "Failed to increment stream ID %r, returning as-is",
+            entry_id,
+            exc_info=True,
+        )
         return entry_id
 
 

@@ -86,6 +86,11 @@ def get_physical_table_metadata(
         # Broad exception catch, because there are multiple possible exceptions
         # from different drivers that fall outside CompileError
         except Exception:  # pylint: disable=broad-except
+            logger.warning(
+                "Failed to resolve type for column %r, marking as UNKNOWN",
+                col.get("column_name", "<unnamed>"),
+                exc_info=True,
+            )
             col.update(
                 {
                     "type": "UNKNOWN",

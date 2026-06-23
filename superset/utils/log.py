@@ -232,7 +232,7 @@ class AbstractEventLogger(ABC):
             # bulk insert
             explode_by = payload.get("explode")
             records = json.loads(payload.get(explode_by))  # type: ignore
-        except Exception:  # pylint: disable=broad-except
+        except (TypeError, ValueError, json.JSONDecodeError):  # pylint: disable=broad-except
             records = [payload]
 
         self.log(
@@ -396,7 +396,11 @@ class DBEventLogger(AbstractEventLogger):
             json_string: str | None
             try:
                 json_string = json.dumps(record)
-            except Exception:  # pylint: disable=broad-except
+            except (TypeError, ValueError):
+                logger.debug(
+                    "Failed to serialize log record to JSON",
+                    exc_info=True,
+                )
                 json_string = None
             log = Log(
                 action=action,
