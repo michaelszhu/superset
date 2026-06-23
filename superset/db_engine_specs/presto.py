@@ -39,6 +39,7 @@ from sqlalchemy.engine.reflection import Inspector
 from sqlalchemy.engine.result import Row as ResultRow
 from sqlalchemy.engine.url import URL
 from sqlalchemy.exc import NoSuchTableError
+from sqlalchemy.sql import quoted_name
 from sqlalchemy.sql.expression import ColumnClause, Select
 
 from superset import cache_manager, db, is_feature_enabled
@@ -562,7 +563,9 @@ class PrestoBaseEngineSpec(BaseEngineSpec, metaclass=ABCMeta):
             elif isinstance(col_type, types.TIMESTAMP):
                 col_type = TimeStamp()
 
-            query = query.where(Column(col_name, col_type) == value)
+            query = query.where(
+                Column(quoted_name(col_name, quote=True), col_type) == value
+            )
 
         return query
 

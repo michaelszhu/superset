@@ -183,3 +183,39 @@ def test_partition_query_escapes_identifiers() -> None:
         database=None,  # type: ignore
     )
     assert result == "SHOW PARTITIONS `no_schema_tbl`"
+
+
+def test_where_latest_partition_quotes_column_names(mocker: MockerFixture) -> None:
+    """
+    Partition column names must be identifier-quoted in the WHERE clause
+    to prevent SQL injection via crafted partition metadata.
+    """
+    from sqlalchemy.sql import select
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    malicious_col = 'ds"; DROP TABLE users --'
+    mocker.patch.object(
+        HiveEngineSpec,
+        "latest_partition",
+        return_value=([malicious_col], ["2024-01-01"]),
+    )
+
+    result = HiveEngineSpec.where_latest_partition(
+        database=mocker.MagicMock(),
+        table=Table("t"),
+        query=select(),
+        columns=[
+            {
+                "name": malicious_col,
+                "column_name": malicious_col,
+                "type": "VARCHAR",
+                "is_dttm": False,
+            }
+        ],
+    )
+    assert result is not None
+    compiled = str(result.compile(compile_kwargs={"literal_binds": True}))
+    # Internal double-quote escaped by doubling proves proper identifier quoting
+    assert '"ds""; DROP TABLE users --"' in compiled

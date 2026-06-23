@@ -805,7 +805,7 @@ def test_where_latest_partition(
                 compile_kwargs={"literal_binds": True},
             )
         )
-        == f"""SELECT * FROM table \nWHERE partition_key = {expected_value}"""  # noqa: S608
+        == f"""SELECT * FROM table \nWHERE "partition_key" = {expected_value}"""  # noqa: S608
     )
 
 
