@@ -155,6 +155,91 @@ def test_df_to_sql_escapes_like_wildcards(mocker: MockerFixture) -> None:
     assert "ESCAPE" in sql
 
 
+def test_where_latest_partition_quotes_column_names(mocker: MockerFixture) -> None:
+    """
+    Test that ``where_latest_partition`` quotes partition column names to prevent
+    SQL injection via crafted column names in database metadata.
+    """
+    from unittest import mock
+
+    from sqlalchemy import sql
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    mocker.patch(
+        "superset.db_engine_specs.hive.HiveEngineSpec._latest_partition_from_df",
+        return_value=("2024-01-01",),
+    )
+    database = mock.MagicMock()
+    database.get_indexes = mock.MagicMock(
+        return_value=[{"column_names": ["ds"]}]
+    )
+    database.get_extra = mock.MagicMock(return_value={})
+    database.get_df = mock.MagicMock()
+
+    columns: list[dict[str, object]] = [
+        {"name": "ds", "column_name": "ds", "type": "STRING", "is_dttm": False}
+    ]
+    result = HiveEngineSpec.where_latest_partition(
+        database,
+        Table("test_table", "test_schema"),
+        sql.select(),
+        columns,  # type: ignore[arg-type]
+    )
+    assert result is not None
+    query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
+    assert '"ds"' in query_result
+
+
+def test_where_latest_partition_prevents_injection(mocker: MockerFixture) -> None:
+    """
+    Test that ``where_latest_partition`` safely quotes a malicious partition
+    column name, preventing SQL injection.
+    """
+    from unittest import mock
+
+    from sqlalchemy import sql
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    malicious_col = "ds; DROP TABLE users --"
+    mocker.patch(
+        "superset.db_engine_specs.hive.HiveEngineSpec._latest_partition_from_df",
+        return_value=("2024-01-01",),
+    )
+    database = mock.MagicMock()
+    database.get_indexes = mock.MagicMock(
+        return_value=[{"column_names": [malicious_col]}]
+    )
+    database.get_extra = mock.MagicMock(return_value={})
+    database.get_df = mock.MagicMock()
+
+    columns: list[dict[str, object]] = [
+        {
+            "name": malicious_col,
+            "column_name": malicious_col,
+            "type": "STRING",
+            "is_dttm": False,
+        }
+    ]
+    result = HiveEngineSpec.where_latest_partition(
+        database,
+        Table("test_table", "test_schema"),
+        sql.select(),
+        columns,  # type: ignore[arg-type]
+    )
+    assert result is not None
+    query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
+    # The malicious column name must be quoted as an identifier, not rendered raw
+    assert "DROP TABLE" not in query_result.replace(
+        '"ds; DROP TABLE users --"', ""
+    )
+    # Verify it's properly quoted
+    assert '"ds; DROP TABLE users --"' in query_result
+
+
 def test_partition_query_escapes_identifiers() -> None:
     """
     Test that ``_partition_query`` correctly backtick-quotes table and schema names
