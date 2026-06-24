@@ -58,6 +58,7 @@ to confirm malicious names are rejected and safe names continue to work.
 ### 2. `PyJWT` CVE-2022-29217 (SCA) -- False Positive
 
 - **Issue:** [#51](https://github.com/michaelszhu/superset/issues/51)
+- **Response:** [False-positive analysis comment](https://github.com/michaelszhu/superset/issues/51#issuecomment-4786178986)
 - **Severity:** High
 - **Package:** `PyJWT==2.12.0`
 
@@ -85,6 +86,7 @@ pass explicit `algorithms` arguments. **No code change was needed.**
 ### 3. `paramiko` Dependency Risk (SCA) -- False Positive
 
 - **Issue:** [#50](https://github.com/michaelszhu/superset/issues/50)
+- **Response:** [False-positive analysis comment](https://github.com/michaelszhu/superset/issues/50#issuecomment-4786179534)
 - **Severity:** High
 - **Package:** `paramiko==3.5.1`
 
