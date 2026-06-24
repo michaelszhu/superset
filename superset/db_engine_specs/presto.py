@@ -70,6 +70,8 @@ if TYPE_CHECKING:
     with contextlib.suppress(ImportError):  # pyhive may not be installed
         from pyhive.presto import Cursor
 
+SAFE_IDENTIFIER_REGEX = re.compile(r"^[a-zA-Z0-9_]+$")
+
 COLUMN_DOES_NOT_EXIST_REGEX = re.compile(
     "line (?P<location>.+?): .*Column '(?P<column_name>.+?)' cannot be resolved"
 )
@@ -551,6 +553,13 @@ class PrestoBaseEngineSpec(BaseEngineSpec, metaclass=ABCMeta):
         }
 
         for col_name, value in zip(col_names, values, strict=False):
+            if not SAFE_IDENTIFIER_REGEX.match(col_name):
+                logger.warning(
+                    "Rejected potentially unsafe partition column name: %s",
+                    col_name,
+                )
+                return None
+
             col_type = column_type_by_name.get(col_name)
 
             if isinstance(col_type, str):

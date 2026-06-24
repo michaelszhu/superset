@@ -17,10 +17,12 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
+from unittest import mock
 
 import pytest
 from pytest_mock import MockerFixture
+from sqlalchemy import sql
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.engine.url import make_url
 
@@ -183,3 +185,75 @@ def test_partition_query_escapes_identifiers() -> None:
         database=None,  # type: ignore
     )
     assert result == "SHOW PARTITIONS `no_schema_tbl`"
+
+
+@mock.patch("superset.db_engine_specs.hive.HiveEngineSpec._latest_partition_from_df")
+@pytest.mark.parametrize(
+    "malicious_col_name",
+    [
+        "ds; DROP TABLE users--",
+        "ds' OR '1'='1",
+        'ds" OR "1"="1',
+        "ds`; DROP TABLE users--",
+        "ds); DELETE FROM t--",
+    ],
+)
+def test_where_latest_partition_rejects_unsafe_column_names(
+    mock_method: mock.MagicMock,
+    malicious_col_name: str,
+) -> None:
+    from superset.db_engine_specs.hive import HiveEngineSpec
+
+    mock_method.return_value = ("2023-01-01", 1)
+    database = mock.MagicMock()
+    database.get_indexes = mock.MagicMock(
+        return_value=[{"column_names": [malicious_col_name]}]
+    )
+    database.get_extra = mock.MagicMock(return_value={})
+    database.get_df = mock.MagicMock()
+    columns: list[dict[str, Any]] = [
+        {
+            "name": malicious_col_name,
+            "column_name": malicious_col_name,
+            "type": "VARCHAR",
+            "is_dttm": False,
+        }
+    ]
+
+    result = HiveEngineSpec.where_latest_partition(
+        database,
+        Table("test_table", "test_schema"),
+        sql.select(),
+        columns,  # type: ignore
+    )
+    assert result is None
+
+
+@mock.patch("superset.db_engine_specs.hive.HiveEngineSpec._latest_partition_from_df")
+def test_where_latest_partition_allows_safe_column_names(
+    mock_method: mock.MagicMock,
+) -> None:
+    from superset.db_engine_specs.hive import HiveEngineSpec
+
+    mock_method.return_value = ("2023-01-01", 1)
+    database = mock.MagicMock()
+    database.get_indexes = mock.MagicMock(
+        return_value=[{"column_names": ["ds", "hour"]}]
+    )
+    database.get_extra = mock.MagicMock(return_value={})
+    database.get_df = mock.MagicMock()
+    columns: list[dict[str, Any]] = [
+        {"name": "ds", "column_name": "ds", "type": "VARCHAR", "is_dttm": False},
+        {"name": "hour", "column_name": "hour", "type": "INT", "is_dttm": False},
+    ]
+
+    result = HiveEngineSpec.where_latest_partition(
+        database,
+        Table("test_table", "test_schema"),
+        sql.select(),
+        columns,  # type: ignore
+    )
+    assert result is not None
+    query_result = str(result.compile(compile_kwargs={"literal_binds": True}))
+    assert "ds = '2023-01-01'" in query_result
+    assert "hour = 1" in query_result

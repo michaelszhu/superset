@@ -457,6 +457,8 @@ class HiveEngineSpec(PrestoEngineSpec):
         query: Select,
         columns: list[ResultSetColumnType] | None = None,
     ) -> Select | None:
+        from superset.db_engine_specs.presto import SAFE_IDENTIFIER_REGEX
+
         try:
             col_names, values = cls.latest_partition(
                 database,
@@ -468,6 +470,12 @@ class HiveEngineSpec(PrestoEngineSpec):
             return None
         if values is not None and columns is not None:
             for col_name, value in zip(col_names, values, strict=False):
+                if not SAFE_IDENTIFIER_REGEX.match(col_name):
+                    logger.warning(
+                        "Rejected potentially unsafe partition column name: %s",
+                        col_name,
+                    )
+                    return None
                 for clm in columns:
                     if clm.get("name") == col_name:
                         query = query.where(Column(col_name) == value)

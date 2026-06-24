@@ -156,6 +156,42 @@ def test_where_latest_partition(
     )
 
 
+@mock.patch("superset.db_engine_specs.presto.PrestoEngineSpec.latest_partition")
+@pytest.mark.parametrize(
+    "malicious_col_name",
+    [
+        "ds; DROP TABLE users--",
+        "ds' OR '1'='1",
+        'ds" OR "1"="1',
+        "ds`; DROP TABLE users--",
+        "ds\x00injection",
+        "ds); DELETE FROM t--",
+    ],
+)
+def test_where_latest_partition_rejects_unsafe_column_names(
+    mock_latest_partition: mock.MagicMock,
+    malicious_col_name: str,
+) -> None:
+    from superset.db_engine_specs.presto import PrestoEngineSpec
+
+    mock_latest_partition.return_value = ([malicious_col_name], ["2023-01-01"])
+
+    result = PrestoEngineSpec.where_latest_partition(
+        database=mock.MagicMock(),
+        table=Table("table"),
+        query=sql.select(text("* FROM table")),
+        columns=[
+            {
+                "column_name": malicious_col_name,
+                "name": malicious_col_name,
+                "type": "VARCHAR",
+                "is_dttm": False,
+            }
+        ],
+    )
+    assert result is None
+
+
 def test_adjust_engine_params_fully_qualified() -> None:
     """
     Test the ``adjust_engine_params`` method when the URL has catalog and schema.
