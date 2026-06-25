@@ -20,6 +20,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
+import pytest
 import yaml
 
 
@@ -204,3 +205,57 @@ def test_load_examples_from_configs_defaults(
         force_data=False,
     )
     mock_command.run.assert_called_once()
+
+
+@patch("superset.examples.utils.ImportExamplesCommand")
+def test_load_configs_from_directory_rejects_unsafe_yaml_constructors(
+    mock_command_cls,
+):
+    """load_configs_from_directory() must use yaml.safe_load (SafeLoader).
+
+    yaml.Loader allows arbitrary Python object instantiation via constructor
+    tags (e.g. !!python/object). Even though the metadata files are bundled
+    examples, SafeLoader must be used to prevent code execution from crafted
+    YAML. This test verifies that a YAML tag attempting object instantiation
+    raises an error rather than being silently executed.
+    """
+    from superset.examples.utils import load_configs_from_directory
+
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        # Craft a metadata.yaml with a Python object constructor tag that
+        # yaml.Loader would execute but yaml.SafeLoader rejects
+        (root / "metadata.yaml").write_text(
+            "!!python/object/apply:builtins.eval\nargs: ['1+1']\n"
+        )
+
+        with pytest.raises(yaml.constructor.ConstructorError):
+            load_configs_from_directory(root)
+
+
+@patch("superset.examples.utils.ImportExamplesCommand")
+def test_load_configs_from_directory_strips_type_from_metadata(
+    mock_command_cls,
+):
+    """load_configs_from_directory() must strip 'type' from metadata.
+
+    The 'type' field is removed so that the directory contents can be
+    imported as any model type via ImportExamplesCommand.
+    """
+    from superset.examples.utils import load_configs_from_directory
+
+    with TemporaryDirectory() as tmpdir:
+        root = Path(tmpdir)
+        (root / "metadata.yaml").write_text("version: '1.0.0'\ntype: dashboard\n")
+
+        mock_command = MagicMock()
+        mock_command_cls.return_value = mock_command
+
+        load_configs_from_directory(root)
+
+        # Verify the command was called and the contents have type stripped
+        call_args = mock_command_cls.call_args
+        contents = call_args[0][0]
+        loaded_metadata = yaml.safe_load(contents["metadata.yaml"])
+        assert "type" not in loaded_metadata
+        assert loaded_metadata["version"] == "1.0.0"
