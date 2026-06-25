@@ -17,7 +17,7 @@
 
 from datetime import datetime, timedelta
 from typing import Any, Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 from pytest_mock import MockerFixture
@@ -403,3 +403,52 @@ def test_interval_type_mutator() -> None:
     assert mutator(True) is None
     assert mutator([1, 2, 3]) is None
     assert mutator({"days": 1}) is None
+
+
+@patch("sqlalchemy.engine.Engine.connect")
+def test_get_cancel_query_id(engine_mock: Mock) -> None:
+    from superset.db_engine_specs.postgres import PostgresEngineSpec
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = engine_mock.return_value.__enter__.return_value
+    cursor_mock.fetchone.return_value = [12345]
+    assert PostgresEngineSpec.get_cancel_query_id(cursor_mock, query) == 12345
+
+
+@patch("sqlalchemy.engine.Engine.connect")
+def test_cancel_query(engine_mock: Mock) -> None:
+    from superset.db_engine_specs.postgres import PostgresEngineSpec
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = engine_mock.return_value.__enter__.return_value
+    assert PostgresEngineSpec.cancel_query(cursor_mock, query, "12345") is True
+    cursor_mock.execute.assert_called_once_with(
+        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid=%s",
+        (12345,),
+    )
+
+
+@patch("sqlalchemy.engine.Engine.connect")
+def test_cancel_query_failed(engine_mock: Mock) -> None:
+    from superset.db_engine_specs.postgres import PostgresEngineSpec
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = engine_mock.return_value.__enter__.return_value
+    cursor_mock.execute.side_effect = Exception("Connection error")
+    assert PostgresEngineSpec.cancel_query(cursor_mock, query, "12345") is False
+
+
+def test_cancel_query_rejects_sql_injection() -> None:
+    from superset.db_engine_specs.postgres import PostgresEngineSpec
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = Mock()
+    assert (
+        PostgresEngineSpec.cancel_query(cursor_mock, query, "1; DROP TABLE users")
+        is False
+    )
+    cursor_mock.execute.assert_not_called()

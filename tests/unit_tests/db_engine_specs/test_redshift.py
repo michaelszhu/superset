@@ -17,6 +17,7 @@
 
 from datetime import datetime
 from typing import Optional
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -79,3 +80,48 @@ def test_normalize_table_name_for_upload(
 
     assert normalized_table == expected_table
     assert normalized_schema == expected_schema
+
+
+@patch("sqlalchemy.engine.Engine.connect")
+def test_get_cancel_query_id(engine_mock: Mock) -> None:
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = engine_mock.return_value.__enter__.return_value
+    cursor_mock.fetchone.return_value = [12345]
+    assert RedshiftEngineSpec.get_cancel_query_id(cursor_mock, query) == 12345
+
+
+@patch("sqlalchemy.engine.Engine.connect")
+def test_cancel_query(engine_mock: Mock) -> None:
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = engine_mock.return_value.__enter__.return_value
+    assert RedshiftEngineSpec.cancel_query(cursor_mock, query, "12345") is True
+    cursor_mock.execute.assert_called_once_with(
+        "SELECT pg_cancel_backend(procpid) FROM pg_stat_activity WHERE procpid=%s",
+        (12345,),
+    )
+
+
+@patch("sqlalchemy.engine.Engine.connect")
+def test_cancel_query_failed(engine_mock: Mock) -> None:
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = engine_mock.return_value.__enter__.return_value
+    cursor_mock.execute.side_effect = Exception("Connection error")
+    assert RedshiftEngineSpec.cancel_query(cursor_mock, query, "12345") is False
+
+
+def test_cancel_query_rejects_sql_injection() -> None:
+    from superset.models.sql_lab import Query
+
+    query = Query()
+    cursor_mock = Mock()
+    assert (
+        RedshiftEngineSpec.cancel_query(cursor_mock, query, "1; DROP TABLE users")
+        is False
+    )
+    cursor_mock.execute.assert_not_called()
