@@ -52,6 +52,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Partition column names retrieved from database metadata must match this
+# pattern before being interpolated into a SQLAlchemy Column() expression.
+# This prevents SQL injection via crafted partition column names.
+_PARTITION_COLUMN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
 
 def upload_to_s3(filename: str, upload_prefix: str, table: Table) -> str:
     """
@@ -468,6 +473,12 @@ class HiveEngineSpec(PrestoEngineSpec):
             return None
         if values is not None and columns is not None:
             for col_name, value in zip(col_names, values, strict=False):
+                if not _PARTITION_COLUMN_RE.match(col_name):
+                    logger.warning(
+                        "Rejected invalid partition column name: %s",
+                        col_name,
+                    )
+                    continue
                 for clm in columns:
                     if clm.get("name") == col_name:
                         query = query.where(Column(col_name) == value)
