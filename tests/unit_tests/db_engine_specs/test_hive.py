@@ -17,7 +17,7 @@
 
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 from pytest_mock import MockerFixture
@@ -153,6 +153,76 @@ def test_df_to_sql_escapes_like_wildcards(mocker: MockerFixture) -> None:
     assert r"\%" in sql
     assert r"\_" in sql
     assert "ESCAPE" in sql
+
+
+def test_where_latest_partition_rejects_malicious_column_names(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test that ``where_latest_partition`` rejects partition column names
+    containing SQL injection payloads instead of passing them to Column().
+    """
+    from sqlalchemy import select
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    malicious_col_name = "ds; DROP TABLE users--"
+    mocker.patch.object(
+        HiveEngineSpec,
+        "latest_partition",
+        return_value=([malicious_col_name], ["2024-01-01"]),
+    )
+
+    database = mocker.MagicMock()
+    columns: list[dict[str, Any]] = [
+        {"name": malicious_col_name, "column_name": malicious_col_name, "type": "STRING", "is_dttm": False},
+    ]
+    result = HiveEngineSpec.where_latest_partition(
+        database,
+        Table("test_table", "test_schema"),
+        select(),
+        columns,  # type: ignore[arg-type]
+    )
+    # The malicious column should be skipped; query returned without WHERE clause
+    assert result is not None
+    query_str = str(result.compile(compile_kwargs={"literal_binds": True}))
+    assert "DROP" not in query_str
+    assert "WHERE" not in query_str
+
+
+def test_where_latest_partition_accepts_valid_column_names(
+    mocker: MockerFixture,
+) -> None:
+    """
+    Test that ``where_latest_partition`` accepts legitimate partition column names.
+    """
+    from sqlalchemy import select
+
+    from superset.db_engine_specs.hive import HiveEngineSpec
+    from superset.sql.parse import Table
+
+    mocker.patch.object(
+        HiveEngineSpec,
+        "latest_partition",
+        return_value=(["ds", "hour"], ["2024-01-01", 5]),
+    )
+
+    database = mocker.MagicMock()
+    columns: list[dict[str, Any]] = [
+        {"name": "ds", "column_name": "ds", "type": "STRING", "is_dttm": True},
+        {"name": "hour", "column_name": "hour", "type": "INT", "is_dttm": False},
+    ]
+    result = HiveEngineSpec.where_latest_partition(
+        database,
+        Table("test_table", "test_schema"),
+        select(),
+        columns,  # type: ignore[arg-type]
+    )
+    assert result is not None
+    query_str = str(result.compile(compile_kwargs={"literal_binds": True}))
+    assert "ds = '2024-01-01'" in query_str
+    assert "hour = 5" in query_str
 
 
 def test_partition_query_escapes_identifiers() -> None:
