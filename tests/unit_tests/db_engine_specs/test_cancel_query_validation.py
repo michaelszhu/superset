@@ -188,13 +188,17 @@ class TestPostgresCancelQueryValidation:
 
     @patch("sqlalchemy.engine.Engine.connect")
     def test_cancel_query_valid_id(self, engine_mock: Mock) -> None:
-        """Test that valid PostgreSQL PID works"""
+        """Test that valid PostgreSQL PID uses parameterized query"""
         from superset.db_engine_specs.postgres import PostgresEngineSpec
         from superset.models.sql_lab import Query
 
         query = Query()
         cursor_mock = engine_mock.return_value.__enter__.return_value
         assert PostgresEngineSpec.cancel_query(cursor_mock, query, "12345") is True
+        cursor_mock.execute.assert_called_once_with(
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid=%s",
+            (12345,),
+        )
 
     @patch("sqlalchemy.engine.Engine.connect")
     def test_cancel_query_sql_injection_blocked(self, engine_mock: Mock) -> None:
@@ -216,13 +220,17 @@ class TestRedshiftCancelQueryValidation:
 
     @patch("sqlalchemy.engine.Engine.connect")
     def test_cancel_query_valid_id(self, engine_mock: Mock) -> None:
-        """Test that valid Redshift PID works"""
+        """Test that valid Redshift PID uses parameterized query"""
         from superset.db_engine_specs.redshift import RedshiftEngineSpec
         from superset.models.sql_lab import Query
 
         query = Query()
         cursor_mock = engine_mock.return_value.__enter__.return_value
         assert RedshiftEngineSpec.cancel_query(cursor_mock, query, "12345") is True
+        cursor_mock.execute.assert_called_once_with(
+            "SELECT pg_cancel_backend(procpid) FROM pg_stat_activity WHERE procpid=%s",
+            (12345,),
+        )
 
     @patch("sqlalchemy.engine.Engine.connect")
     def test_cancel_query_sql_injection_blocked(self, engine_mock: Mock) -> None:
