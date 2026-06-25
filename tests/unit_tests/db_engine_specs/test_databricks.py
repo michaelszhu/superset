@@ -108,6 +108,7 @@ def test_parameters_json_schema() -> None:
             },
         },
         "required": ["access_token", "database", "host", "http_path", "port"],
+        "additionalProperties": False,
     }
 
 

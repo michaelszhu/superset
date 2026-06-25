@@ -118,6 +118,7 @@ class TestBaseModelRestApi(SupersetTestCase):
         expected_mutation_spec = {
             "properties": {"id": {"type": "integer"}},
             "type": "object",
+            "additionalProperties": False,
         }
         assert (
             response["components"]["schemas"]["Model1Api.post"]

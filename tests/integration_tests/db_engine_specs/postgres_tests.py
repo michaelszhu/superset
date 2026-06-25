@@ -505,6 +505,7 @@ def test_base_parameters_mixin():
             },
         },
         "required": ["database", "host", "port", "username"],
+        "additionalProperties": False,
     }
 
 
