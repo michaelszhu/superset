@@ -174,11 +174,11 @@ def refresh_oauth2_token(
             db.session.flush()
             raise
         except Exception:
-            # non-OAuth related failure, log the exception
             logger.warning(
                 "OAuth2 token refresh failed for user=%s db=%s",
                 user_id,
                 database_id,
+                exc_info=True,
             )
             raise
 

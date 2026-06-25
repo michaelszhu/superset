@@ -302,6 +302,11 @@ class CSVReader(BaseDataReader):
                     df, column, dtype, invalid_mask, kwargs, ex
                 )
             except Exception:
+                logger.warning(
+                    "Failed to build detailed error for column %s conversion",
+                    column,
+                    exc_info=True,
+                )
                 error_msg = f"Cannot convert column '{column}' to {dtype}. {str(ex)}"
 
             raise DatabaseUploadFailed(message=error_msg) from ex

@@ -506,6 +506,11 @@ class DashboardRestApi(CustomTagsOptimizationMixin, BaseSupersetModelRestApi):
             try:
                 args = rison.loads(q)
             except Exception:
+                logger.warning(
+                    "Failed to parse rison query parameter: %s",
+                    q,
+                    exc_info=True,
+                )
                 return self.response_400(message="Invalid rison query parameter")
             if isinstance(args, dict):
                 columns = args.get("columns")

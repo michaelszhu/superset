@@ -824,6 +824,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
             else:
                 safe_uri = "Not configured"
 
+            logger.warning(
+                "Cannot connect to database %s",
+                safe_uri,
+                exc_info=True,
+            )
             print(
                 f"{Fore.RED}ERROR: Cannot connect to database {safe_uri}\n"
                 f"NOTE: Most CLI commands require a database{Style.RESET_ALL}"
