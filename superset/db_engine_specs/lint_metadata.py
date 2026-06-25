@@ -295,8 +295,14 @@ def get_all_engine_specs_ast() -> list[dict[str, Any]]:  # noqa: C901
                                 elif target.id == "metadata":
                                     try:
                                         metadata = _eval_ast_dict(item.value)
-                                    except Exception:
-                                        # Mark as unparseable
+                                    except Exception as ex:
+                                        print(
+                                            f"Warning: Could not parse "
+                                            f"metadata dict in "
+                                            f"{filename}::{node.name}"
+                                            f": {ex}",
+                                            file=sys.stderr,
+                                        )
                                         metadata = {"_unparseable": True}
 
                 specs.append(
